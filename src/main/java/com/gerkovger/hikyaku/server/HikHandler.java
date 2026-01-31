@@ -1,8 +1,12 @@
 package com.gerkovger.hikyaku.server;
 
 
-import com.gerger.hikyaku.api.HikMessageFactory;
-import com.gerger.hikyaku.api.channel.ChannelType;
+import com.gerkovger.hikyaku.api.HikMessage;
+import com.gerkovger.hikyaku.api.HikMessageFactory;
+import com.gerkovger.hikyaku.api.MsgType;
+import com.gerkovger.hikyaku.api.channel.ChannelType;
+import com.gerkovger.hikyaku.server.channel.Channel;
+import com.gerkovger.hikyaku.server.channel.ChannelRegistry;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -18,9 +22,13 @@ public class HikHandler extends Thread {
 
     private final String connectionId = "CONN-" + sessionCounter.incrementAndGet();
 
-    private Socket clientSocket;
+    private final Socket clientSocket;
     private DataOutputStream out;
     private DataInputStream in;
+
+    private final ChannelRegistry channelRegistry = new ChannelRegistry();
+
+    private Channel channel;
 
     public HikHandler(Socket socket) {
         this.clientSocket = socket;
@@ -30,8 +38,6 @@ public class HikHandler extends Thread {
         try {
             in = new DataInputStream(clientSocket.getInputStream());
             out = new DataOutputStream(clientSocket.getOutputStream());
-
-
 
             while (true) {
                 var msg = HikMessageFactory.readNextMessage(in);
@@ -46,18 +52,22 @@ public class HikHandler extends Thread {
                         var bb = ByteBuffer.wrap(msg.getPayload());
                         var nameLen = msg.getPayload().length - 1;
                         var channelType = ChannelType.of(bb.get());
-                        var channelName = new byte[nameLen];
-                        bb.get(channelName);
-                        System.out.println("Connection request for " + channelType + " named " + new String(channelName));
+                        var channelNameB = new byte[nameLen];
+                        bb.get(channelNameB);
+                        var channelName = new String(channelNameB);
+                        channel = channelRegistry.createOrGet(channelType, channelName);
+                        System.out.println("Connection request for " + channelType + " named " + channelName);
+                        var ack = new HikMessage(MsgType.ACK, corid, "connected");
+                        ack.writeTo(out);
                     }
                     default -> {
-                        System.out.println(msg.getCorrelationId() + ": " + msg.getMessageType() + ", " + msg.payloadAsString());
+                        System.out.println(corid + ": " + type + ", " + body + " -> [" + channel.getType() + "]" + channel.getName());
                     }
                 }
             }
 
         } catch (EOFException e) {
-            System.out.println("Connection closed for " + connectionId);
+            System.out.println("Connection closed for [" + channel.getType() + "]" + channel.getName() + " | " + connectionId);
         } catch (IOException e) {
             throw new RuntimeException(e);
         } finally {

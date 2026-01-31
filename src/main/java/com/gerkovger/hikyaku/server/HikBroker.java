@@ -8,12 +8,11 @@ public class HikBroker {
 
     public void start(int port) throws IOException {
         serverSocket = new ServerSocket(port);
-        while (true) {
+        while (!serverSocket.isClosed()) {
             var handler = new HikHandler(serverSocket.accept());
             handler.start();
             System.out.println("New handler created with id: " + handler.getConnectionId());
         }
-
     }
 
     public void stop() throws IOException {
